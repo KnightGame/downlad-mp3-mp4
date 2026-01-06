@@ -300,8 +300,8 @@ def download_file_route(download_id):
     )
 
 if __name__ == '__main__':
-    # Get port from environment variable (untuk hosting)
     port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
     
     print("=" * 70)
     print("  Universal Video Downloader - Web Version")
@@ -310,4 +310,5 @@ if __name__ == '__main__':
     print("\n⚠️  Pastikan yt-dlp dan ffmpeg sudah terinstall!\n")
     
     # Untuk production, gunakan host='0.0.0.0'
+
     app.run(debug=False, host='0.0.0.0', port=port)
