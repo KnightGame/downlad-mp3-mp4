@@ -1,4 +1,4 @@
-# app.py - Flask Backend (Railway Ready)
+# app.py - Flask Backend (Railway Ready) - FIXED
 from flask import Flask, render_template, request, jsonify, send_file
 import subprocess
 import json
@@ -91,38 +91,51 @@ def get_info():
         audio_formats = []
         video_formats = []
         
-        # Filter audio formats
+        # Filter audio formats - FIX: Handle None values
         for fmt in formats:
             if fmt.get('vcodec') == 'none' and fmt.get('acodec') != 'none':
+                abr = fmt.get('abr') or 0  # Default to 0 if None
                 audio_formats.append({
                     'id': fmt.get('format_id'),
                     'ext': fmt.get('ext'),
-                    'abr': fmt.get('abr', 0),
+                    'abr': abr,
                     'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
                     'note': fmt.get('format_note', '')
                 })
         
-        # Filter video formats
+        # Filter video formats - FIX: Handle None values
         seen = {}
         for fmt in formats:
             if fmt.get('vcodec') != 'none':
-                height = fmt.get('height', 0)
+                height = fmt.get('height') or 0  # Default to 0 if None
                 key = f"{height}p"
                 
-                if key not in seen or (fmt.get('filesize', 0) or 0) > (seen[key].get('filesize', 0) or 0):
+                current_size = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                existing_size = seen.get(key, {}).get('filesize') or 0
+                
+                if key not in seen or current_size > existing_size:
                     seen[key] = {
                         'id': fmt.get('format_id'),
                         'ext': fmt.get('ext'),
                         'resolution': fmt.get('resolution', 'Unknown'),
-                        'fps': fmt.get('fps', 0),
+                        'fps': fmt.get('fps') or 0,
                         'height': height,
                         'has_audio': fmt.get('acodec') != 'none',
-                        'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
+                        'filesize': fmt.get('filesize') or fmt.get('filesize_approx') or 0,
                         'note': fmt.get('format_note', '')
                     }
         
-        video_formats = sorted(seen.values(), key=lambda x: x['height'], reverse=True)
-        audio_formats.sort(key=lambda x: x['abr'], reverse=True)
+        # FIX: Safe sorting with None handling
+        video_formats = sorted(
+            seen.values(), 
+            key=lambda x: x.get('height', 0) or 0, 
+            reverse=True
+        )
+        
+        audio_formats.sort(
+            key=lambda x: x.get('abr', 0) or 0, 
+            reverse=True
+        )
         
         # Response
         response = {
@@ -139,8 +152,10 @@ def get_info():
         
     except subprocess.TimeoutExpired:
         return jsonify({'error': 'Timeout saat mengambil informasi'}), 408
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Error parsing video info: {str(e)}'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Error: {str(e)}'}), 500
 
 @app.route('/download', methods=['POST'])
 def download():
