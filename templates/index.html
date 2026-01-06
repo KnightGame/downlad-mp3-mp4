@@ -246,21 +246,6 @@
             border-radius: 6px;
             backdrop-filter: blur(10px);
         }
-
-        .loader {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
     </style>
 </head>
 <body>
@@ -433,22 +418,30 @@
 
             formatList.innerHTML = '';
 
+            if (formats.length === 0) {
+                formatList.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada format tersedia</p>';
+                formatSelector.classList.add('show');
+                return;
+            }
+
             formats.forEach(fmt => {
                 const div = document.createElement('div');
                 div.className = 'format-item';
                 
                 if (type === 'audio') {
                     const size = fmt.filesize ? formatFilesize(fmt.filesize) : 'Unknown';
+                    const bitrate = Math.round(fmt.abr || 0);
                     div.innerHTML = `
-                        <strong>${Math.round(fmt.abr)}kbps</strong> - ${fmt.ext.toUpperCase()}<br>
-                        <small>Size: ${size} ${fmt.note}</small>
+                        <strong>${bitrate}kbps</strong> - ${fmt.ext.toUpperCase()}<br>
+                        <small>Size: ${size} ${fmt.note || ''}</small>
                     `;
                 } else {
                     const size = fmt.filesize ? formatFilesize(fmt.filesize) : 'Unknown';
                     const audio = fmt.has_audio ? '🔊' : '🔇';
+                    const fps = fmt.fps || 30;
                     div.innerHTML = `
-                        <strong>${fmt.resolution}</strong> @${fmt.fps}fps ${audio}<br>
-                        <small>${fmt.ext.toUpperCase()} - Size: ${size} ${fmt.note}</small>
+                        <strong>${fmt.resolution}</strong> @${fps}fps ${audio}<br>
+                        <small>${fmt.ext.toUpperCase()} - Size: ${size} ${fmt.note || ''}</small>
                     `;
                 }
 
@@ -485,7 +478,8 @@
                         url: urlInput.value.trim(),
                         type: formatType.value,
                         format_id: selectedFormat.id,
-                        title: videoInfo.title
+                        title: videoInfo.title,
+                        has_audio: selectedFormat.has_audio !== undefined ? selectedFormat.has_audio : true
                     })
                 });
 
@@ -545,7 +539,7 @@
         }
 
         function formatFilesize(bytes) {
-            if (!bytes) return 'Unknown';
+            if (!bytes || bytes === 0) return 'Unknown';
             const mb = bytes / (1024 * 1024);
             if (mb < 1024) {
                 return `${mb.toFixed(2)} MB`;
