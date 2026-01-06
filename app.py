@@ -1,4 +1,4 @@
-# app.py - Flask Backend (Railway Ready) - COMPLETE FIX
+# app.py - Flask Backend (Railway Ready) - FIXED VERSION
 from flask import Flask, render_template, request, jsonify, send_file
 import subprocess
 import json
@@ -91,39 +91,53 @@ def get_info():
         audio_formats = []
         video_formats = []
         
-        # Filter audio formats (seperti di r.py baris 87-97)
+        # Filter audio formats - FIXED: Lebih permisif
         for fmt in formats:
-            # Audio only: vcodec = none AND acodec != none
-            if fmt.get('vcodec') == 'none' and fmt.get('acodec') != 'none':
+            # Audio only: vcodec = none DAN ada acodec
+            vcodec = fmt.get('vcodec', 'none')
+            acodec = fmt.get('acodec', 'none')
+            
+            if (vcodec == 'none' or vcodec is None) and acodec not in ['none', None]:
+                abr = fmt.get('abr') or fmt.get('tbr') or 0
+                filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                
                 audio_formats.append({
                     'id': fmt.get('format_id'),
-                    'ext': fmt.get('ext'),
-                    'abr': fmt.get('abr', 0),
-                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
+                    'ext': fmt.get('ext', 'unknown'),
+                    'abr': abr,
+                    'filesize': filesize,
                     'note': fmt.get('format_note', '')
                 })
         
-        # Filter video formats (seperti di r.py baris 99-114)
+        # Filter video formats - FIXED: Tambahkan has_audio
         for fmt in formats:
-            # Video (dengan atau tanpa audio): vcodec != none
-            if fmt.get('vcodec') != 'none':
+            vcodec = fmt.get('vcodec', 'none')
+            acodec = fmt.get('acodec', 'none')
+            
+            # Video: vcodec != none
+            if vcodec not in ['none', None]:
+                height = fmt.get('height', 0)
+                fps = fmt.get('fps', 30)
+                filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
+                has_audio = acodec not in ['none', None]
+                
                 video_formats.append({
                     'id': fmt.get('format_id'),
-                    'ext': fmt.get('ext'),
-                    'resolution': fmt.get('resolution', 'Unknown'),
-                    'fps': fmt.get('fps', 0),
-                    'vcodec': fmt.get('vcodec', ''),
-                    'acodec': fmt.get('acodec', 'none'),
-                    'has_audio': fmt.get('acodec') != 'none',
-                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
+                    'ext': fmt.get('ext', 'mp4'),
+                    'resolution': fmt.get('resolution') or f"{fmt.get('width', '?')}x{height}",
+                    'fps': fps,
+                    'vcodec': vcodec,
+                    'acodec': acodec,
+                    'has_audio': has_audio,  # FIXED: Tambahkan info audio
+                    'filesize': filesize,
                     'note': fmt.get('format_note', ''),
-                    'height': fmt.get('height', 0)
+                    'height': height
                 })
         
-        # Sort audio by bitrate (highest first) - seperti r.py baris 116
+        # Sort audio by bitrate (highest first)
         audio_formats.sort(key=lambda x: x.get('abr', 0) or 0, reverse=True)
         
-        # Deduplikasi video formats berdasarkan resolution (seperti r.py baris 308-332)
+        # Deduplikasi video formats berdasarkan resolution
         seen_resolutions = {}
         filtered_video_formats = []
         
@@ -140,8 +154,8 @@ def get_info():
             else:
                 # Prioritas: dengan audio > tanpa audio, filesize lebih besar
                 existing = seen_resolutions[key]
-                current_has_audio = fmt['acodec'] != 'none'
-                existing_has_audio = existing['acodec'] != 'none'
+                current_has_audio = fmt['has_audio']
+                existing_has_audio = existing['has_audio']
                 current_size = fmt.get('filesize', 0) or 0
                 existing_size = existing.get('filesize', 0) or 0
                 
@@ -155,7 +169,7 @@ def get_info():
                             filtered_video_formats[i] = fmt
                             break
         
-        # Sort video by height (highest first) - seperti r.py baris 118
+        # Sort video by height (highest first)
         filtered_video_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
         
         # Response
@@ -220,7 +234,7 @@ def download_file(download_id, url, format_type, format_id, safe_title, has_audi
         }
         
         if format_type == 'audio':
-            # Download audio (seperti r.py baris 236-251)
+            # Download audio
             output_file = os.path.join(DOWNLOAD_FOLDER, f"{download_id}_{safe_title}.mp3")
             
             command = [
@@ -235,7 +249,7 @@ def download_file(download_id, url, format_type, format_id, safe_title, has_audi
                 url
             ]
         else:
-            # Download video (seperti r.py baris 396-421)
+            # Download video
             output_file = os.path.join(DOWNLOAD_FOLDER, f"{download_id}_{safe_title}.mp4")
             
             if has_audio:
