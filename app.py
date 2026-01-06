@@ -1,4 +1,4 @@
-# app.py - Flask Backend (Railway Ready) - FIXED
+# app.py - Flask Backend (Railway Ready) - COMPLETE FIX
 from flask import Flask, render_template, request, jsonify, send_file
 import subprocess
 import json
@@ -91,62 +91,72 @@ def get_info():
         audio_formats = []
         video_formats = []
         
-        # Filter audio formats - FIXED: Only audio, no video
+        # Filter audio formats (seperti di r.py baris 87-97)
         for fmt in formats:
-            vcodec = fmt.get('vcodec', 'none')
-            acodec = fmt.get('acodec', 'none')
-            
-            # Audio only: no video codec AND has audio codec
-            if vcodec in ['none', None] and acodec not in ['none', None]:
-                abr = fmt.get('abr') or 0
+            # Audio only: vcodec = none AND acodec != none
+            if fmt.get('vcodec') == 'none' and fmt.get('acodec') != 'none':
                 audio_formats.append({
                     'id': fmt.get('format_id'),
                     'ext': fmt.get('ext'),
-                    'abr': abr,
-                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx') or 0,
+                    'abr': fmt.get('abr', 0),
+                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
                     'note': fmt.get('format_note', '')
                 })
         
-        # Filter video formats - FIXED: Only videos WITH audio
-        seen = {}
+        # Filter video formats (seperti di r.py baris 99-114)
         for fmt in formats:
-            vcodec = fmt.get('vcodec', 'none')
-            acodec = fmt.get('acodec', 'none')
+            # Video (dengan atau tanpa audio): vcodec != none
+            if fmt.get('vcodec') != 'none':
+                video_formats.append({
+                    'id': fmt.get('format_id'),
+                    'ext': fmt.get('ext'),
+                    'resolution': fmt.get('resolution', 'Unknown'),
+                    'fps': fmt.get('fps', 0),
+                    'vcodec': fmt.get('vcodec', ''),
+                    'acodec': fmt.get('acodec', 'none'),
+                    'has_audio': fmt.get('acodec') != 'none',
+                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
+                    'note': fmt.get('format_note', ''),
+                    'height': fmt.get('height', 0)
+                })
+        
+        # Sort audio by bitrate (highest first) - seperti r.py baris 116
+        audio_formats.sort(key=lambda x: x.get('abr', 0) or 0, reverse=True)
+        
+        # Deduplikasi video formats berdasarkan resolution (seperti r.py baris 308-332)
+        seen_resolutions = {}
+        filtered_video_formats = []
+        
+        for fmt in video_formats:
+            height = fmt.get('height', 0)
+            if height == 0:
+                continue
             
-            # Video with audio: has video codec AND has audio codec
-            if vcodec not in ['none', None] and acodec not in ['none', None]:
-                height = fmt.get('height') or 0
-                if height == 0:
-                    continue  # Skip if no height info
-                    
-                key = f"{height}p"
+            key = f"{height}p"
+            
+            if key not in seen_resolutions:
+                seen_resolutions[key] = fmt
+                filtered_video_formats.append(fmt)
+            else:
+                # Prioritas: dengan audio > tanpa audio, filesize lebih besar
+                existing = seen_resolutions[key]
+                current_has_audio = fmt['acodec'] != 'none'
+                existing_has_audio = existing['acodec'] != 'none'
+                current_size = fmt.get('filesize', 0) or 0
+                existing_size = existing.get('filesize', 0) or 0
                 
-                current_size = fmt.get('filesize') or fmt.get('filesize_approx') or 0
-                existing_size = seen.get(key, {}).get('filesize') or 0
-                
-                if key not in seen or current_size > existing_size:
-                    seen[key] = {
-                        'id': fmt.get('format_id'),
-                        'ext': fmt.get('ext'),
-                        'resolution': fmt.get('resolution', f'{height}p'),
-                        'fps': fmt.get('fps') or 0,
-                        'height': height,
-                        'has_audio': True,
-                        'filesize': current_size,
-                        'note': fmt.get('format_note', '')
-                    }
+                # Ganti jika format baru lebih baik
+                if (current_has_audio and not existing_has_audio) or \
+                   (current_has_audio == existing_has_audio and current_size > existing_size):
+                    seen_resolutions[key] = fmt
+                    # Replace in filtered list
+                    for i, f in enumerate(filtered_video_formats):
+                        if f.get('height') == height:
+                            filtered_video_formats[i] = fmt
+                            break
         
-        # FIX: Safe sorting with None handling
-        video_formats = sorted(
-            seen.values(), 
-            key=lambda x: x.get('height', 0) or 0, 
-            reverse=True
-        )
-        
-        audio_formats.sort(
-            key=lambda x: x.get('abr', 0) or 0, 
-            reverse=True
-        )
+        # Sort video by height (highest first) - seperti r.py baris 118
+        filtered_video_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
         
         # Response
         response = {
@@ -155,8 +165,8 @@ def get_info():
             'duration': info.get('duration', 0),
             'thumbnail': info.get('thumbnail'),
             'platform': info.get('extractor', 'Unknown'),
-            'audio_formats': audio_formats[:10],
-            'video_formats': video_formats[:15]
+            'audio_formats': audio_formats[:10],  # Top 10 audio formats
+            'video_formats': filtered_video_formats[:15]  # Top 15 video formats
         }
         
         return jsonify(response)
@@ -177,6 +187,7 @@ def download():
         format_type = data.get('type')
         format_id = data.get('format_id')
         title = data.get('title', 'download')
+        has_audio = data.get('has_audio', True)
         
         if not all([url, format_type, format_id]):
             return jsonify({'error': 'Data tidak lengkap'}), 400
@@ -187,7 +198,7 @@ def download():
         
         thread = Thread(
             target=download_file,
-            args=(download_id, url, format_type, format_id, safe_title)
+            args=(download_id, url, format_type, format_id, safe_title, has_audio)
         )
         thread.start()
         
@@ -199,7 +210,7 @@ def download():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def download_file(download_id, url, format_type, format_id, safe_title):
+def download_file(download_id, url, format_type, format_id, safe_title, has_audio):
     """Background task untuk download"""
     try:
         download_progress[download_id] = {
@@ -209,6 +220,7 @@ def download_file(download_id, url, format_type, format_id, safe_title):
         }
         
         if format_type == 'audio':
+            # Download audio (seperti r.py baris 236-251)
             output_file = os.path.join(DOWNLOAD_FOLDER, f"{download_id}_{safe_title}.mp3")
             
             command = [
@@ -223,17 +235,30 @@ def download_file(download_id, url, format_type, format_id, safe_title):
                 url
             ]
         else:
+            # Download video (seperti r.py baris 396-421)
             output_file = os.path.join(DOWNLOAD_FOLDER, f"{download_id}_{safe_title}.mp4")
             
-            command = [
-                'yt-dlp',
-                '-f', f'{format_id}+bestaudio/best',
-                '--merge-output-format', 'mp4',
-                '-o', output_file,
-                '--no-playlist',
-                '--newline',
-                url
-            ]
+            if has_audio:
+                # Video sudah punya audio, download langsung
+                command = [
+                    'yt-dlp',
+                    '-f', format_id,
+                    '-o', output_file,
+                    '--no-playlist',
+                    '--newline',
+                    url
+                ]
+            else:
+                # Video tanpa audio, merge dengan audio terbaik
+                command = [
+                    'yt-dlp',
+                    '-f', f'{format_id}+bestaudio/best',
+                    '--merge-output-format', 'mp4',
+                    '-o', output_file,
+                    '--no-playlist',
+                    '--newline',
+                    url
+                ]
         
         process = subprocess.Popen(
             command,
