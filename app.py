@@ -91,23 +91,34 @@ def get_info():
         audio_formats = []
         video_formats = []
         
-        # Filter audio formats - FIX: Handle None values
+        # Filter audio formats - FIXED: Only audio, no video
         for fmt in formats:
-            if fmt.get('vcodec') == 'none' and fmt.get('acodec') != 'none':
-                abr = fmt.get('abr') or 0  # Default to 0 if None
+            vcodec = fmt.get('vcodec', 'none')
+            acodec = fmt.get('acodec', 'none')
+            
+            # Audio only: no video codec AND has audio codec
+            if vcodec in ['none', None] and acodec not in ['none', None]:
+                abr = fmt.get('abr') or 0
                 audio_formats.append({
                     'id': fmt.get('format_id'),
                     'ext': fmt.get('ext'),
                     'abr': abr,
-                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx'),
+                    'filesize': fmt.get('filesize') or fmt.get('filesize_approx') or 0,
                     'note': fmt.get('format_note', '')
                 })
         
-        # Filter video formats - FIX: Handle None values
+        # Filter video formats - FIXED: Only videos WITH audio
         seen = {}
         for fmt in formats:
-            if fmt.get('vcodec') != 'none':
-                height = fmt.get('height') or 0  # Default to 0 if None
+            vcodec = fmt.get('vcodec', 'none')
+            acodec = fmt.get('acodec', 'none')
+            
+            # Video with audio: has video codec AND has audio codec
+            if vcodec not in ['none', None] and acodec not in ['none', None]:
+                height = fmt.get('height') or 0
+                if height == 0:
+                    continue  # Skip if no height info
+                    
                 key = f"{height}p"
                 
                 current_size = fmt.get('filesize') or fmt.get('filesize_approx') or 0
@@ -117,11 +128,11 @@ def get_info():
                     seen[key] = {
                         'id': fmt.get('format_id'),
                         'ext': fmt.get('ext'),
-                        'resolution': fmt.get('resolution', 'Unknown'),
+                        'resolution': fmt.get('resolution', f'{height}p'),
                         'fps': fmt.get('fps') or 0,
                         'height': height,
-                        'has_audio': fmt.get('acodec') != 'none',
-                        'filesize': fmt.get('filesize') or fmt.get('filesize_approx') or 0,
+                        'has_audio': True,
+                        'filesize': current_size,
                         'note': fmt.get('format_note', '')
                     }
         
