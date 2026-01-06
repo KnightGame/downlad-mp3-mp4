@@ -1,4 +1,4 @@
-# app.py - Flask Backend
+# app.py - Flask Backend (Production Ready)
 from flask import Flask, render_template, request, jsonify, send_file
 import subprocess
 import json
@@ -300,11 +300,14 @@ def download_file_route(download_id):
     )
 
 if __name__ == '__main__':
+    # Get port from environment variable (untuk hosting)
+    port = int(os.environ.get('PORT', 5000))
+    
     print("=" * 70)
     print("  Universal Video Downloader - Web Version")
     print("=" * 70)
-    print("\nðŸŒ Server berjalan di: http://localhost:5000")
-    print("ðŸ“± Akses dari perangkat lain: http://[IP-KAMU]:5000")
-    print("\nâš ï¸  Pastikan yt-dlp dan ffmpeg sudah terinstall!\n")
+    print(f"\n🌐 Server berjalan di port: {port}")
+    print("\n⚠️  Pastikan yt-dlp dan ffmpeg sudah terinstall!\n")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Untuk production, gunakan host='0.0.0.0'
+    app.run(debug=False, host='0.0.0.0', port=port)
