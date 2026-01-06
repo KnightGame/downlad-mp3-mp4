@@ -1,4 +1,4 @@
-# app.py - Flask Backend (Production Ready)
+# app.py - Flask Backend (Railway Ready)
 from flask import Flask, render_template, request, jsonify, send_file
 import subprocess
 import json
@@ -40,6 +40,11 @@ def check_dependencies():
 def index():
     """Halaman utama"""
     return render_template('index.html')
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({'status': 'ok', 'message': 'Server is running'})
 
 @app.route('/check-dependencies')
 def check_deps():
@@ -126,8 +131,8 @@ def get_info():
             'duration': info.get('duration', 0),
             'thumbnail': info.get('thumbnail'),
             'platform': info.get('extractor', 'Unknown'),
-            'audio_formats': audio_formats[:10],  # Top 10
-            'video_formats': video_formats[:15]   # Top 15
+            'audio_formats': audio_formats[:10],
+            'video_formats': video_formats[:15]
         }
         
         return jsonify(response)
@@ -143,21 +148,17 @@ def download():
     try:
         data = request.json
         url = data.get('url')
-        format_type = data.get('type')  # 'audio' or 'video'
+        format_type = data.get('type')
         format_id = data.get('format_id')
         title = data.get('title', 'download')
         
         if not all([url, format_type, format_id]):
             return jsonify({'error': 'Data tidak lengkap'}), 400
         
-        # Generate unique ID untuk download
         download_id = str(uuid.uuid4())
-        
-        # Bersihkan nama file
         safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
         safe_title = safe_title[:100] or 'download'
         
-        # Start download di background thread
         thread = Thread(
             target=download_file,
             args=(download_id, url, format_type, format_id, safe_title)
@@ -208,7 +209,6 @@ def download_file(download_id, url, format_type, format_id, safe_title):
                 url
             ]
         
-        # Jalankan download
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -217,11 +217,9 @@ def download_file(download_id, url, format_type, format_id, safe_title):
             bufsize=1
         )
         
-        # Monitor progress
         for line in process.stdout:
             if '[download]' in line and '%' in line:
                 try:
-                    # Parse progress
                     parts = line.split()
                     for part in parts:
                         if '%' in part:
@@ -280,9 +278,8 @@ def download_file_route(download_id):
     if not os.path.exists(file_path):
         return 'File tidak ditemukan', 404
     
-    # Cleanup after download
     def cleanup():
-        time.sleep(5)  # Wait 5 seconds
+        time.sleep(5)
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -299,15 +296,5 @@ def download_file_route(download_id):
         download_name=progress['filename']
     )
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-    
-    print("=" * 70)
-    print("  Universal Video Downloader - Web Version")
-    print("=" * 70)
-    print(f"\n🌐 Server berjalan di port: {port}")
-    print("\n⚠️  Pastikan yt-dlp dan ffmpeg sudah terinstall!\n")
-    
-    # Untuk production, gunakan host='0.0.0.0'
-    app.run(debug=False, host='0.0.0.0', port=port)
+# PENTING: Untuk Railway, jangan gunakan if __name__ == '__main__'
+# Gunicorn akan langsung import app object
