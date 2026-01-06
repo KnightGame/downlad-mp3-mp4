@@ -246,6 +246,12 @@
             border-radius: 6px;
             backdrop-filter: blur(10px);
         }
+
+        .debug-info {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -385,12 +391,18 @@
                     throw new Error(data.error || 'Gagal mengambil informasi');
                 }
 
+                // Debug log
+                console.log('Audio formats:', data.audio_formats.length);
+                console.log('Video formats:', data.video_formats.length);
+                console.log('Data:', data);
+
                 videoInfo = data;
                 displayVideoInfo(data);
                 displayFormats(data);
 
             } catch (error) {
                 showAlert('error', `❌ Error: ${error.message}`);
+                console.error('Fetch error:', error);
             } finally {
                 fetchBtn.disabled = false;
                 fetchBtn.textContent = '🔍 Ambil Info Video';
@@ -416,32 +428,39 @@
             const type = formatType.value;
             const formats = type === 'audio' ? data.audio_formats : data.video_formats;
 
+            console.log('Displaying formats for type:', type);
+            console.log('Formats:', formats);
+
             formatList.innerHTML = '';
 
-            if (formats.length === 0) {
-                formatList.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada format tersedia</p>';
+            if (!formats || formats.length === 0) {
+                formatList.innerHTML = '<p style="text-align: center; padding: 20px; color: #999;">Tidak ada format tersedia. Coba pilih format lain.</p>';
                 formatSelector.classList.add('show');
                 return;
             }
 
-            formats.forEach(fmt => {
+            formats.forEach((fmt, index) => {
                 const div = document.createElement('div');
                 div.className = 'format-item';
                 
                 if (type === 'audio') {
-                    const size = fmt.filesize ? formatFilesize(fmt.filesize) : 'Unknown';
+                    const size = fmt.filesize && fmt.filesize > 0 ? formatFilesize(fmt.filesize) : 'Unknown';
                     const bitrate = Math.round(fmt.abr || 0);
+                    
                     div.innerHTML = `
-                        <strong>${bitrate}kbps</strong> - ${fmt.ext.toUpperCase()}<br>
-                        <small>Size: ${size} ${fmt.note || ''}</small>
+                        <strong>${bitrate}kbps</strong> - ${(fmt.ext || 'mp3').toUpperCase()}<br>
+                        <small>Size: ${size}</small>
+                        <div class="debug-info">Format ID: ${fmt.id} | Codec: ${fmt.acodec || 'unknown'}</div>
                     `;
                 } else {
-                    const size = fmt.filesize ? formatFilesize(fmt.filesize) : 'Unknown';
+                    const size = fmt.filesize && fmt.filesize > 0 ? formatFilesize(fmt.filesize) : 'Unknown';
                     const audio = fmt.has_audio ? '🔊' : '🔇';
                     const fps = fmt.fps || 30;
+                    
                     div.innerHTML = `
                         <strong>${fmt.resolution}</strong> @${fps}fps ${audio}<br>
-                        <small>${fmt.ext.toUpperCase()} - Size: ${size} ${fmt.note || ''}</small>
+                        <small>${(fmt.ext || 'mp4').toUpperCase()} - Size: ${size}</small>
+                        <div class="debug-info">Format ID: ${fmt.id} | Has Audio: ${fmt.has_audio} | Codec: ${fmt.acodec || 'none'}</div>
                     `;
                 }
 
@@ -451,6 +470,7 @@
                     });
                     div.classList.add('selected');
                     selectedFormat = fmt;
+                    console.log('Selected format:', selectedFormat);
                 });
 
                 formatList.appendChild(div);
@@ -464,6 +484,14 @@
                 showAlert('error', '❌ Pilih kualitas terlebih dahulu!');
                 return;
             }
+
+            const has_audio = selectedFormat.has_audio !== undefined ? selectedFormat.has_audio : true;
+            
+            console.log('Starting download with:', {
+                format_id: selectedFormat.id,
+                has_audio: has_audio,
+                type: formatType.value
+            });
 
             downloadBtn.disabled = true;
             progressContainer.classList.add('show');
@@ -479,7 +507,7 @@
                         type: formatType.value,
                         format_id: selectedFormat.id,
                         title: videoInfo.title,
-                        has_audio: selectedFormat.has_audio !== undefined ? selectedFormat.has_audio : true
+                        has_audio: has_audio
                     })
                 });
 
@@ -494,6 +522,7 @@
 
             } catch (error) {
                 showAlert('error', `❌ Error: ${error.message}`);
+                console.error('Download error:', error);
                 downloadBtn.disabled = false;
                 progressContainer.classList.remove('show');
             }
@@ -532,6 +561,7 @@
                 } catch (error) {
                     clearInterval(interval);
                     showAlert('error', '❌ Error mengecek progress');
+                    console.error('Progress error:', error);
                     downloadBtn.disabled = false;
                     progressContainer.classList.remove('show');
                 }
@@ -540,11 +570,17 @@
 
         function formatFilesize(bytes) {
             if (!bytes || bytes === 0) return 'Unknown';
-            const mb = bytes / (1024 * 1024);
-            if (mb < 1024) {
+            
+            const kb = bytes / 1024;
+            const mb = kb / 1024;
+            const gb = mb / 1024;
+            
+            if (gb >= 1) {
+                return `${gb.toFixed(2)} GB`;
+            } else if (mb >= 1) {
                 return `${mb.toFixed(2)} MB`;
             } else {
-                return `${(mb / 1024).toFixed(2)} GB`;
+                return `${kb.toFixed(2)} KB`;
             }
         }
     </script>
