@@ -1,4 +1,4 @@
-# app.py - Flask Backend (Railway Ready) - FIXED VERSION
+# app.py - Flask Backend (Railway Ready) - FIXED v2
 from flask import Flask, render_template, request, jsonify, send_file
 import subprocess
 import json
@@ -88,17 +88,25 @@ def get_info():
         # Parse formats
         formats = info.get('formats', [])
         
+        # Debug: Log total formats
+        print(f"Total formats: {len(formats)}")
+        
         audio_formats = []
         video_formats = []
         
-        # Filter audio formats - FIXED: Lebih permisif
+        # Filter audio formats - SANGAT PERMISIF
         for fmt in formats:
-            # Audio only: vcodec = none DAN ada acodec
             vcodec = fmt.get('vcodec', 'none')
             acodec = fmt.get('acodec', 'none')
             
-            if (vcodec == 'none' or vcodec is None) and acodec not in ['none', None]:
-                abr = fmt.get('abr') or fmt.get('tbr') or 0
+            # Audio: TIDAK ada video codec (none/null) DAN ADA audio codec
+            is_audio_only = (vcodec in ['none', None]) and (acodec not in ['none', None, ''])
+            
+            if is_audio_only:
+                # Ambil bitrate dari berbagai sumber
+                abr = fmt.get('abr') or fmt.get('tbr') or fmt.get('asr', 0) / 1000 or 128
+                
+                # Ambil filesize dari berbagai sumber
                 filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
                 
                 audio_formats.append({
@@ -106,33 +114,52 @@ def get_info():
                     'ext': fmt.get('ext', 'unknown'),
                     'abr': abr,
                     'filesize': filesize,
-                    'note': fmt.get('format_note', '')
+                    'note': fmt.get('format_note', ''),
+                    'acodec': acodec
                 })
         
-        # Filter video formats - FIXED: Tambahkan has_audio
+        print(f"Audio formats found: {len(audio_formats)}")
+        
+        # Filter video formats
         for fmt in formats:
             vcodec = fmt.get('vcodec', 'none')
             acodec = fmt.get('acodec', 'none')
             
-            # Video: vcodec != none
-            if vcodec not in ['none', None]:
+            # Video: ADA video codec (bukan none/null)
+            is_video = vcodec not in ['none', None, '']
+            
+            if is_video:
                 height = fmt.get('height', 0)
-                fps = fmt.get('fps', 30)
+                width = fmt.get('width', 0)
+                fps = fmt.get('fps') or 30
+                
+                # Ambil filesize dari berbagai sumber
                 filesize = fmt.get('filesize') or fmt.get('filesize_approx') or 0
-                has_audio = acodec not in ['none', None]
+                
+                # Check has audio
+                has_audio = acodec not in ['none', None, '']
+                
+                # Resolution
+                if height > 0:
+                    resolution = f"{width}x{height}" if width > 0 else f"{height}p"
+                else:
+                    resolution = fmt.get('resolution', 'Unknown')
                 
                 video_formats.append({
                     'id': fmt.get('format_id'),
                     'ext': fmt.get('ext', 'mp4'),
-                    'resolution': fmt.get('resolution') or f"{fmt.get('width', '?')}x{height}",
+                    'resolution': resolution,
                     'fps': fps,
                     'vcodec': vcodec,
                     'acodec': acodec,
-                    'has_audio': has_audio,  # FIXED: Tambahkan info audio
+                    'has_audio': has_audio,
                     'filesize': filesize,
                     'note': fmt.get('format_note', ''),
-                    'height': height
+                    'height': height,
+                    'width': width
                 })
+        
+        print(f"Video formats found: {len(video_formats)}")
         
         # Sort audio by bitrate (highest first)
         audio_formats.sort(key=lambda x: x.get('abr', 0) or 0, reverse=True)
@@ -160,8 +187,16 @@ def get_info():
                 existing_size = existing.get('filesize', 0) or 0
                 
                 # Ganti jika format baru lebih baik
-                if (current_has_audio and not existing_has_audio) or \
-                   (current_has_audio == existing_has_audio and current_size > existing_size):
+                should_replace = False
+                
+                # Prioritas 1: Ada audio lebih baik
+                if current_has_audio and not existing_has_audio:
+                    should_replace = True
+                # Prioritas 2: Sama-sama ada/tidak ada audio, pilih yang lebih besar
+                elif current_has_audio == existing_has_audio and current_size > existing_size:
+                    should_replace = True
+                
+                if should_replace:
                     seen_resolutions[key] = fmt
                     # Replace in filtered list
                     for i, f in enumerate(filtered_video_formats):
@@ -172,6 +207,14 @@ def get_info():
         # Sort video by height (highest first)
         filtered_video_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
         
+        # Limit jumlah format
+        audio_formats = audio_formats[:10]
+        filtered_video_formats = filtered_video_formats[:15]
+        
+        # Debug output
+        print(f"Final audio formats: {len(audio_formats)}")
+        print(f"Final video formats: {len(filtered_video_formats)}")
+        
         # Response
         response = {
             'title': info.get('title', 'Unknown'),
@@ -179,8 +222,8 @@ def get_info():
             'duration': info.get('duration', 0),
             'thumbnail': info.get('thumbnail'),
             'platform': info.get('extractor', 'Unknown'),
-            'audio_formats': audio_formats[:10],  # Top 10 audio formats
-            'video_formats': filtered_video_formats[:15]  # Top 15 video formats
+            'audio_formats': audio_formats,
+            'video_formats': filtered_video_formats
         }
         
         return jsonify(response)
@@ -190,6 +233,8 @@ def get_info():
     except json.JSONDecodeError as e:
         return jsonify({'error': f'Error parsing video info: {str(e)}'}), 500
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 @app.route('/download', methods=['POST'])
@@ -202,6 +247,8 @@ def download():
         format_id = data.get('format_id')
         title = data.get('title', 'download')
         has_audio = data.get('has_audio', True)
+        
+        print(f"Download request: type={format_type}, format_id={format_id}, has_audio={has_audio}")
         
         if not all([url, format_type, format_id]):
             return jsonify({'error': 'Data tidak lengkap'}), 400
@@ -222,6 +269,8 @@ def download():
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 def download_file(download_id, url, format_type, format_id, safe_title, has_audio):
@@ -274,6 +323,8 @@ def download_file(download_id, url, format_type, format_id, safe_title, has_audi
                     url
                 ]
         
+        print(f"Running command: {' '.join(command)}")
+        
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -283,6 +334,7 @@ def download_file(download_id, url, format_type, format_id, safe_title, has_audi
         )
         
         for line in process.stdout:
+            print(line.strip())  # Debug output
             if '[download]' in line and '%' in line:
                 try:
                     parts = line.split()
@@ -314,6 +366,8 @@ def download_file(download_id, url, format_type, format_id, safe_title, has_audi
             }
             
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         download_progress[download_id] = {
             'status': 'error',
             'progress': 0,
